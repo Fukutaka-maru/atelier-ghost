@@ -1,12 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-
-const products = [
-  { name: "GHOST 001", price: "¥78,000 JPY", image: "/images/look-001.png", alt: "深い赤の背景で眼鏡をかけたモデル" },
-  { name: "GHOST 002", price: "¥62,000 JPY", image: "/images/look-002.png", alt: "ブラウンの背景でサングラスをかけたモデル" },
-  { name: "GHOST 003", price: "¥48,000 JPY", image: "/images/look-003.png", alt: "ネイビーの背景で淡いドレスを着たモデル" },
-];
+import Link from "next/link";
+import { products } from "./products";
 
 const statement = [
   "まだ存在しないけれど、存在してほしいと願うもの。",
@@ -97,12 +93,12 @@ export default function Home() {
         </div>
         <div className="product-grid">
           {products.map((product, index) => (
-            <article className="product-card" key={product.name}>
-              <a className="product-image-wrap" href={`#${product.name.toLowerCase().replace(" ", "-")}`}>
+            <article className="product-card" key={product.slug}>
+              <Link className="product-image-wrap" href={`/ghosts/${product.slug}`}>
                 <img src={product.image} alt={product.alt} />
                 <span className="product-index">0{index + 1}</span>
                 <span className="product-view">VIEW GHOST</span>
-              </a>
+              </Link>
               <div className="product-meta">
                 <div><h2>{product.name}</h2><p>{product.price}</p></div>
                 <Bookmark active={saved.includes(index)} onClick={() => toggleSaved(index)} />
