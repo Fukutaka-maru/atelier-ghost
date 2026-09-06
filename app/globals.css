@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #111215;
+  --paper: #f3f1ec;
+  --white: #f7f8fb;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-snap-type: y mandatory; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: Arial, Helvetica, sans-serif; }
+a { color: inherit; text-decoration: none; }
+button { color: inherit; font: inherit; }
+.site-shell { width: 100%; }
+.snap-panel { position: relative; min-height: 100svh; scroll-snap-align: start; scroll-snap-stop: always; overflow: hidden; }
+
+.hero { background: #718296; color: var(--white); }
+.hero-image, .statement-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hero-image { object-position: 50% 50%; transform: scale(1.01); animation: hero-in 1.8s cubic-bezier(.2,.7,.2,1) both; }
+.hero-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(5,11,20,.42), transparent 24%, transparent 62%, rgba(7,12,18,.28)); }
+.site-header { position: absolute; z-index: 3; top: 0; left: 0; width: 100%; min-height: 72px; padding: 20px clamp(22px, 2.8vw, 46px); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.28); }
+.site-header nav { display: flex; gap: clamp(28px, 3vw, 52px); align-items: center; font-size: 12px; }
+.site-header nav a { position: relative; padding-block: 8px; }
+.site-header nav a::after { content: ""; position: absolute; left: 0; right: 100%; bottom: 1px; height: 1px; background: currentColor; transition: right .3s ease; }
+.site-header nav a:hover::after, .site-header nav a:focus-visible::after { right: 0; }
+.header-logo { display: inline-flex; align-items: center; width: clamp(235px, 24vw, 360px); }
+.logo-img { display: block; height: auto; user-select: none; }
+.logo-img--inline { width: 100%; }
+.logo-img--stacked { width: clamp(180px, 22vw, 260px); margin-inline: auto; }
+.hero-copy { position: absolute; z-index: 2; right: clamp(26px, 5vw, 76px); bottom: clamp(118px, 15vh, 166px); text-align: right; font-size: clamp(34px, 5.25vw, 82px); font-weight: 300; line-height: .9; letter-spacing: 0; text-shadow: 0 1px 18px rgba(15,20,27,.2); }
+.hero-copy p { margin: 0; }
+.hero-copy p:first-child { padding-right: .08em; }
+.hero-product-link { position: absolute; z-index: 4; right: clamp(26px, 5vw, 76px); bottom: clamp(52px, 7vh, 74px); display: inline-flex; align-items: center; gap: 13px; color: white; font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; font-size: 12px; letter-spacing: .16em; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,.74); text-shadow: 0 1px 12px rgba(12,17,24,.22); }
+.hero-product-link span { font-family: Arial, Helvetica, sans-serif; letter-spacing: 0; transition: transform .25s ease; }
+.hero-product-link:hover span, .hero-product-link:focus-visible span { transform: translateX(5px); }
+.scroll-cue, .continue-cue { position: absolute; z-index: 4; display: flex; align-items: center; gap: 12px; font-size: 9px; letter-spacing: .22em; }
+.scroll-cue { left: clamp(22px, 2.8vw, 46px); bottom: 28px; writing-mode: vertical-rl; }
+.scroll-cue i { width: 1px; height: 35px; background: currentColor; transform-origin: top; animation: cue 1.8s ease-in-out infinite; }
+
+.statement { display: grid; place-items: center; color: white; background: #70839a; }
+.statement-bg { object-position: center; transform: scale(1.06); filter: saturate(.78) contrast(.95); }
+.statement-vignette { position: absolute; inset: 0; background: radial-gradient(circle at center, rgba(37,57,78,.06) 0 22%, rgba(36,53,72,.17) 74%, rgba(21,35,50,.32) 100%); backdrop-filter: blur(2px); }
+.statement-copy { position: relative; z-index: 2; width: min(90vw, 760px); text-align: center; padding: 88px 20px 100px; }
+.statement-copy > .logo-img { opacity: 0; transform: translateY(18px); transition: opacity .9s ease .08s, transform .9s ease .08s; margin-bottom: 27px; }
+.statement-lines { display: grid; gap: clamp(10px, 1.4vh, 17px); }
+.statement-lines p { margin: 0; font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; font-size: clamp(11px, .98vw, 14px); font-weight: 400; letter-spacing: .09em; line-height: 1.72; opacity: 0; transform: translateY(13px); filter: blur(5px); transition: opacity .75s ease calc(.18s + var(--line) * .07s), transform .75s ease calc(.18s + var(--line) * .07s), filter .75s ease calc(.18s + var(--line) * .07s); }
+.statement.is-visible .statement-copy > .logo-img, .statement.is-visible .statement-lines p { opacity: 1; transform: translateY(0); filter: blur(0); }
+.continue-cue { right: clamp(22px, 3vw, 48px); bottom: 30px; }
+.continue-cue i { width: 42px; height: 1px; background: currentColor; transition: width .3s ease; }
+.continue-cue:hover i { width: 64px; }
+
+.collection { background: var(--paper); padding: clamp(78px, 9vh, 118px) clamp(20px, 4.8vw, 76px) 26px; display: flex; flex-direction: column; }
+.collection-head { display: flex; justify-content: space-between; align-items: end; margin-bottom: clamp(26px, 4vh, 48px); }
+.collection-head h1 { margin: 12px 0 0; font-size: clamp(28px, 3.25vw, 48px); font-weight: 400; letter-spacing: -.04em; line-height: .98; }
+.eyebrow, .collection-head > a { font-size: 11px; letter-spacing: .08em; }
+.collection-head > a { border-bottom: 1px solid #999; padding-bottom: 6px; }
+.product-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(14px, 2vw, 30px); }
+.product-image-wrap { position: relative; display: block; aspect-ratio: 1 / 1.08; overflow: hidden; background: #ddd; }
+.product-image-wrap img { width: 100%; height: 100%; object-fit: cover; transition: transform .75s cubic-bezier(.2,.75,.2,1), filter .5s ease; }
+.product-image-wrap:hover img { transform: scale(1.035); filter: saturate(.9); }
+.product-index, .product-view { position: absolute; color: white; font-size: 9px; letter-spacing: .14em; opacity: 0; transition: opacity .35s ease; }
+.product-index { top: 14px; left: 14px; }
+.product-view { right: 14px; bottom: 14px; }
+.product-image-wrap:hover .product-index, .product-image-wrap:hover .product-view { opacity: 1; }
+.product-meta { display: flex; align-items: flex-start; justify-content: space-between; padding-top: 14px; }
+.product-meta h2, .product-meta p { margin: 0; font-size: 12px; font-weight: 400; letter-spacing: .07em; }
+.product-meta p { margin-top: 7px; font-size: 11px; letter-spacing: .04em; }
+.bookmark { appearance: none; border: 0; background: transparent; width: 28px; height: 30px; display: grid; place-items: start end; cursor: pointer; padding: 2px; }
+.bookmark span { width: 12px; height: 16px; border: 1px solid currentColor; display: block; clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 72%, 0 100%); transition: background .25s ease; }
+.bookmark.is-saved span { background: var(--ink); }
+footer { margin-top: auto; border-top: 1px solid #d3d0c9; padding-top: 16px; display: flex; justify-content: space-between; font-size: 9px; letter-spacing: .11em; }
+
+@keyframes hero-in { from { opacity: .3; transform: scale(1.06); } to { opacity: 1; transform: scale(1.01); } }
+@keyframes cue { 0%,100% { transform: scaleY(.25); opacity: .5; } 50% { transform: scaleY(1); opacity: 1; } }
+
+@media (max-width: 720px) {
+  html { scroll-snap-type: y proximity; }
+  .site-header { min-height: 65px; padding: 16px 18px; }
+  .header-logo { width: 138px; }
+  .site-header nav { gap: 17px; font-size: 9px; }
+  .site-header nav a:nth-child(3) { display: none; }
+  .hero-image { object-position: 55% center; }
+  .hero-copy { right: 20px; bottom: 136px; max-width: 92vw; font-size: clamp(34px, 10.8vw, 52px); }
+  .hero-product-link { right: 20px; bottom: 78px; font-size: 11px; }
+  .scroll-cue { left: 18px; }
+  .statement-copy { width: 95vw; padding-inline: 17px; }
+  .logo-img--stacked { width: 172px; }
+  .statement-lines { gap: 12px; }
+  .statement-lines p { font-size: 10px; letter-spacing: .04em; line-height: 1.75; }
+  .continue-cue { right: 18px; }
+  .collection { min-height: auto; padding: 82px 18px 24px; }
+  .collection-head { align-items: flex-start; }
+  .collection-head h1 { font-size: 31px; }
+  .product-grid { grid-template-columns: 1fr; gap: 32px; }
+  .product-image-wrap { aspect-ratio: 1 / 1.12; }
+  footer { margin-top: 56px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
