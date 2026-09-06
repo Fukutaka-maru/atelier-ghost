@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { products } from "./products";
+import { products, getProductThumbnail } from "./products";
 
 const statement = [
   "まだ存在しないけれど、存在してほしいと願うもの。",
@@ -92,10 +92,12 @@ export default function Home() {
           <a href="#all">VIEW ALL <span aria-hidden="true">→</span></a>
         </div>
         <div className="product-grid">
-          {products.map((product, index) => (
+          {products.map((product, index) => {
+            const thumb = getProductThumbnail(product);
+            return (
             <article className="product-card" key={product.slug}>
               <Link className="product-image-wrap" href={`/ghosts/${product.slug}`}>
-                <img src={product.image} alt={product.alt} />
+                <img src={thumb.src} alt={thumb.alt} />
                 <span className="product-index">0{index + 1}</span>
                 <span className="product-view">VIEW GHOST</span>
               </Link>
@@ -104,7 +106,8 @@ export default function Home() {
                 <Bookmark active={saved.includes(index)} onClick={() => toggleSaved(index)} />
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
         <footer id="journal"><span>ATELIER GHOST — TOKYO</span><span>© 2026</span></footer>
       </section>
