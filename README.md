@@ -1,4 +1,15 @@
-# vinext-starter
+# ATELIER GHOST
+
+デザイン・商品構成・AIオンライン試着の現在地は [PROJECT_STATUS.md](./PROJECT_STATUS.md) にまとめています。
+
+## 開発メモ
+
+- 商品CMSのセットアップ: [MICROCMS_SETUP.md](./MICROCMS_SETUP.md)
+- AIオンライン試着の設定: [AI_TRY_ON_SETUP.md](./AI_TRY_ON_SETUP.md)
+
+---
+
+## vinext starter information
 
 A clean full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
