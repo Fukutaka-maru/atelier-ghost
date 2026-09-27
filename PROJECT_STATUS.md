@@ -168,6 +168,14 @@ OPENAI_IMAGE_COMPRESSION=95
 
 詳しい設定は [AI_TRY_ON_SETUP.md](./AI_TRY_ON_SETUP.md) を参照。
 
+### 利用条件と回数制限（2026-09-27 追加）
+
+- メールアドレス登録＋公式LINE（@060emkyc）の友だち確認が済んだ人だけが写真をアップロードできる。
+- 各GHOSTは1回まで、1日3回まで（日本時間）。メールアドレス・LINE user IDの両方で数える。
+- ユーザー・生成履歴・I WANT THIS（`product_page` / `post_try`）はCloudflare D1 `atelier-ghost-db` に保存する。画像は保存しない。
+- 簡易のIPレート制限（メモリ上で10分3回）は廃止し、D1で「同一IP 1時間12回」に置き換えた。
+- セットアップと確認手順は [TRY_THE_GHOST_SETUP.md](./TRY_THE_GHOST_SETUP.md) を参照。
+
 ## 5. 共有導線
 
 生成結果の下には、Instagramストーリーズ共有を想定した保存・共有CTAを置く。

@@ -1,29 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
+import { sendWant, TryOnError } from "../../try-on-client";
 
-export default function ProductInterest({ productName }: { productName: string }) {
+export default function ProductInterest({ productName, productSlug }: { productName: string; productSlug: string }) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    const openFromTryOn = () => setOpen(true);
-    window.addEventListener("atelier:open-interest", openFromTryOn);
-    return () => window.removeEventListener("atelier:open-interest", openFromTryOn);
-  }, []);
-
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!email) return;
-    setSubmitted(true);
+    setSending(true);
+    setError("");
+    try {
+      await sendWant({ ghostId: productSlug, source: "product_page", email });
+      setSubmitted(true);
+    } catch (wantError) {
+      setError(wantError instanceof TryOnError ? wantError.message : "登録できませんでした。時間を置いてもう一度お試しください。");
+    } finally {
+      setSending(false);
+    }
   };
 
   const close = () => {
     setOpen(false);
     setSubmitted(false);
     setEmail("");
+    setError("");
   };
 
   return (
@@ -56,7 +63,8 @@ export default function ProductInterest({ productName }: { productName: string }
                     placeholder="you@example.com"
                     required
                   />
-                  <button type="submit">SEND REQUEST</button>
+                  {error && <p className="interest-error" role="alert">{error}</p>}
+                  <button type="submit" disabled={sending}>{sending ? "SENDING…" : "SEND REQUEST"}</button>
                 </form>
               </>
             ) : (

@@ -29,6 +29,11 @@ microCMSで新しいAPIを作成します。
 | `modelImages` | 複数画像 | MODELタブに表示する着用者ビジュアル |
 | `colors` | 繰り返しフィールド | 色展開がある商品の色・画像 |
 | `sortOrder` | 数字 | 表示順。小さい数字が先 |
+| `availability` | セレクトフィールド | `ghost`（未発売）/ `available`（購入可能）。`available` のときだけ返品無料※などの安心情報を表示 |
+| `shipping` | テキストフィールド | 配送予定。例: `ご注文から5〜7営業日で発送` |
+| `payment` | テキストフィールド | 支払い方法。例: `クレジットカード / Apple Pay` |
+| `sizeInfo` | テキストフィールド | サイズ情報（未入力なら specs の「サイズ」を表示） |
+| `returnExclusions` | テキストエリア | この商品だけの返品対象外条件（1行に1つ） |
 
 `colors` の中身は以下にします。
 

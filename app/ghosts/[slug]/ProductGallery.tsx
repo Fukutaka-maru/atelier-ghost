@@ -13,7 +13,7 @@ export default function ProductGallery({ product }: { product: Product }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const wheelConsumedRef = useRef(false);
-  const wheelEndTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const wheelEndTimerRef = useRef<number | null>(null);
 
   const productImages = product.colors ? product.colors[colorIndex].images : product.images!;
   const images = view === "model" && hasModelImages ? product.modelImages! : productImages;

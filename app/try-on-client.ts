@@ -107,3 +107,57 @@ export async function generateTryOn(
     imageUrl: URL.createObjectURL(image),
   };
 }
+
+export type TryStatus = {
+  registered: boolean;
+  email: string | null;
+  lineLinked: boolean;
+  friendVerified: boolean;
+  triedThisGhost: boolean;
+  todayCount: number;
+  dailyLimit: number;
+  lineLoginReady: boolean;
+  lineMock: boolean;
+};
+
+async function readJson<T>(response: Response): Promise<T> {
+  const payload = await response.json().catch(() => null) as (T & { error?: string; code?: string }) | null;
+  if (!response.ok || !payload) {
+    throw new TryOnError(payload?.error || "通信に失敗しました。時間を置いてもう一度お試しください。", payload?.code);
+  }
+  return payload;
+}
+
+export async function fetchTryStatus(ghostId: string) {
+  const response = await fetch(`/api/try-on/status?ghost=${encodeURIComponent(ghostId)}`, { cache: "no-store" });
+  return readJson<TryStatus>(response);
+}
+
+export async function registerTryEmail(email: string) {
+  const response = await fetch("/api/try-on/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  return readJson<{ ok: true; email: string }>(response);
+}
+
+export function lineLoginUrl(returnTo: string, mock?: "friend" | "not_friend") {
+  const params = new URLSearchParams({ returnTo });
+  if (mock) params.set("mock", mock);
+  return `/api/line/login?${params.toString()}`;
+}
+
+export async function sendWant(request: {
+  ghostId: string;
+  source: "product_page" | "post_try";
+  email?: string;
+  colorName?: string;
+}) {
+  const response = await fetch("/api/wants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return readJson<{ ok: true }>(response);
+}

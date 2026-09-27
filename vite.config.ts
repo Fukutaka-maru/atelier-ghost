@@ -1,10 +1,14 @@
+import { fileURLToPath } from "node:url";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
 
-const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
-  "00000000-0000-4000-8000-000000000000";
+// ATELIER GHOST の本番D1（Cloudflare）。ドメインに依存しないので、独自ドメインへ移行しても同じDBを使い続けられる。
+// database_id は秘密情報ではない。別のDBでビルドしたい場合だけ D1_DATABASE_ID で上書きする。
+const D1_DATABASE_NAME = process.env.D1_DATABASE_NAME ?? "atelier-ghost-db";
+const D1_DATABASE_ID =
+  process.env.D1_DATABASE_ID ?? "0574906f-fdf2-41ae-b159-b83194e8a1bc";
 
 const { d1, r2 } = hostingConfig;
 
@@ -18,8 +22,9 @@ const localBindingConfig = {
     ? [
         {
           binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          database_name: D1_DATABASE_NAME,
+          database_id: D1_DATABASE_ID,
+          migrations_dir: fileURLToPath(new URL("./db/migrations", import.meta.url)),
         },
       ]
     : [],

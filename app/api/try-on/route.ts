@@ -1,24 +1,25 @@
 import { NextResponse } from "next/server";
 import { getProductBySlug } from "../../products";
+import { isMockEnabled } from "../../../lib/try-the-ghost/env";
+import { isStillLineFriend } from "../../../lib/try-the-ghost/line";
+import { readSession, sessionSecret } from "../../../lib/try-the-ghost/session";
+import {
+  clientIp,
+  finishGeneration,
+  getUser,
+  hashValue,
+  isSessionFriendVerified,
+  reserveGeneration,
+} from "../../../lib/try-the-ghost/store";
 
 const OPENAI_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits";
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_PHOTO_BYTES = 12 * 1024 * 1024;
-const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-const RATE_LIMIT_MAX_REQUESTS = 3;
 
-type RateLimitEntry = { count: number; expiresAt: number };
 type ImageEditResponse = {
   data?: Array<{ b64_json?: string }>;
   error?: { code?: string; message?: string; type?: string };
 };
-
-const globalForRateLimit = globalThis as typeof globalThis & {
-  atelierTryOnRateLimit?: Map<string, RateLimitEntry>;
-};
-
-const rateLimit = globalForRateLimit.atelierTryOnRateLimit ?? new Map<string, RateLimitEntry>();
-globalForRateLimit.atelierTryOnRateLimit = rateLimit;
 
 function noStoreHeaders() {
   return {
@@ -31,23 +32,11 @@ function jsonError(message: string, status: number, code: string) {
   return NextResponse.json({ error: message, code }, { status, headers: noStoreHeaders() });
 }
 
-function clientAddress(request: Request) {
-  return request.headers.get("cf-connecting-ip")
-    ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-    ?? "local";
-}
-
-function isRateLimited(address: string) {
-  const now = Date.now();
-  const current = rateLimit.get(address);
-  if (!current || current.expiresAt <= now) {
-    rateLimit.set(address, { count: 1, expiresAt: now + RATE_LIMIT_WINDOW_MS });
-    return false;
-  }
-  if (current.count >= RATE_LIMIT_MAX_REQUESTS) return true;
-  current.count += 1;
-  return false;
-}
+const limitMessages = {
+  ghost_used: { message: "このGHOSTは、1回だけ試せます。", status: 409, code: "TRY_GHOST_ALREADY_USED" },
+  daily_limit: { message: "1日に3つまでGHOSTを試せます。また明日お試しください。", status: 429, code: "TRY_DAILY_LIMIT" },
+  ip_limit: { message: "短時間に多くの生成が行われています。時間を置いてからお試しください。", status: 429, code: "TRY_ON_RATE_LIMITED" },
+} as const;
 
 function resolveProductReferences(product: Awaited<ReturnType<typeof getProductBySlug>>, colorName: string) {
   if (!product) return null;
@@ -180,12 +169,28 @@ async function editImage(apiKey: string, images: File[], prompt: string) {
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return jsonError("AI試着は現在準備中です。", 503, "AI_NOT_CONFIGURED");
-  if (isRateLimited(clientAddress(request))) {
-    return jsonError("短時間の生成上限に達しました。10分ほど置いてからお試しください。", 429, "TRY_ON_RATE_LIMITED");
+  // ここから下の条件をすべて満たした場合のみ、画像生成APIを呼ぶ。
+  if (!sessionSecret()) return jsonError("TRY THE GHOSTは現在準備中です。", 503, "TRY_NOT_CONFIGURED");
+  const session = await readSession(request);
+  const user = session ? await getUser(session.uid) : null;
+  if (!session || !user) return jsonError("メールアドレスを登録してください。", 401, "TRY_EMAIL_REQUIRED");
+  if (!session.lid || !isSessionFriendVerified(session, user)) {
+    return jsonError("LINEの友だち追加を確認してください。", 403, "TRY_LINE_REQUIRED");
+  }
+  try {
+    if (await isStillLineFriend(session.lid) === false) {
+      return jsonError("LINEの友だち追加が確認できませんでした。友だち追加後、もう一度確認してください。", 403, "TRY_LINE_NOT_FRIEND");
+    }
+  } catch (error) {
+    console.error("ATELIER_GHOST_LINE_RECHECK_FAILED", error);
+    return jsonError("LINEの友だち状態を確認できませんでした。時間を置いてお試しください。", 503, "TRY_LINE_CHECK_FAILED");
   }
 
+  const mockImage = isMockEnabled(request, "TRY_ON_MOCK_IMAGE");
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey && !mockImage) return jsonError("AI試着は現在準備中です。", 503, "AI_NOT_CONFIGURED");
+
+  let generationId: string | null = null;
   try {
     const form = await request.formData();
     const photo = form.get("photo");
@@ -210,13 +215,34 @@ export async function POST(request: Request) {
     const references = resolveProductReferences(product, colorName);
     if (!product || !references) return jsonError("商品画像を確認できませんでした。", 404, "TRY_ON_PRODUCT_NOT_FOUND");
 
-    const hasTemplateReference = isReferenceImage(templateReference);
-    const image = await editImage(
-      apiKey,
-      hasTemplateReference ? [photo, templateReference, productReference] : [photo, productReference],
-      tryOnPrompt(product.name, references.resolvedColorName, product.category, hasTemplateReference),
-    );
+    const reservation = await reserveGeneration({
+      user,
+      lineUserId: session.lid,
+      ghostId: product.slug,
+      colorName: references.resolvedColorName,
+      ipHash: await hashValue(clientIp(request)),
+      userAgentHash: await hashValue(request.headers.get("user-agent")),
+    });
+    if (!reservation.ok) {
+      const limit = limitMessages[reservation.reason];
+      return jsonError(limit.message, limit.status, limit.code);
+    }
+    generationId = reservation.id;
 
+    const hasTemplateReference = isReferenceImage(templateReference);
+    // TRY_ON_MOCK_IMAGE（localhostのみ）: OpenAIを呼ばず参照画像を返して、制限の動作だけを確認する
+    const image = mockImage
+      ? new Uint8Array(await (hasTemplateReference ? templateReference : productReference).arrayBuffer())
+      : await editImage(
+        apiKey!,
+        hasTemplateReference ? [photo, templateReference, productReference] : [photo, productReference],
+        tryOnPrompt(product.name, references.resolvedColorName, product.category, hasTemplateReference),
+      );
+
+    await finishGeneration(generationId, "succeeded");
+    generationId = null;
+
+    // 写真・生成画像はレスポンスとして返すだけで、DB・R2・ファイルには保存しない。
     return new Response(image, {
       headers: {
         ...noStoreHeaders(),
@@ -225,6 +251,8 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    // 失敗した生成は回数に数えず、同じGHOSTをもう一度試せるようにする
+    if (generationId) await finishGeneration(generationId, "failed").catch(() => undefined);
     const code = typeof error === "object" && error && "code" in error ? String(error.code) : "TRY_ON_GENERATION_FAILED";
     const status = typeof error === "object" && error && "status" in error ? Number(error.status) : 500;
     const detail = error instanceof Error ? error.message : String(error);

@@ -1,11 +1,33 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import type { Product } from "../../products";
-import { generateTryOn, TryOnError } from "../../try-on-client";
+import {
+  fetchTryStatus,
+  generateTryOn,
+  lineLoginUrl,
+  registerTryEmail,
+  sendWant,
+  TryOnError,
+} from "../../try-on-client";
+import type { TryStatus } from "../../try-on-client";
 
-type TryOnStep = "source" | "confirm" | "generating" | "result";
+type TryOnStep = "checking" | "email" | "line" | "unavailable" | "source" | "confirm" | "generating" | "result";
+
+const LINE_FRIEND_URL = "https://line.me/R/ti/p/@060emkyc";
+const TRY_RULES = ["このGHOSTは、1回だけ試せます。", "1日に3つまでGHOSTを試せます。"];
+
+// LINE Login から戻ったときの結果（?tryon=...）
+const lineResultMessages: Record<string, { tone: "ok" | "error"; text: string }> = {
+  line_ok: { tone: "ok", text: "LINEの友だち追加を確認しました。" },
+  line_not_friend: { tone: "error", text: "LINEの友だち追加が確認できませんでした。\n友だち追加後、もう一度確認してください。" },
+  line_mismatch: { tone: "error", text: "このメールアドレスは、別のLINEアカウントと連携済みです。\n登録時のLINEアカウントでログインしてください。" },
+  line_cancelled: { tone: "error", text: "LINEでのログインがキャンセルされました。" },
+  line_error: { tone: "error", text: "LINEの確認を完了できませんでした。もう一度お試しください。" },
+  line_unavailable: { tone: "error", text: "LINE連携は現在準備中です。" },
+  email_required: { tone: "error", text: "先にメールアドレスを登録してください。" },
+};
 
 const guidanceByCategory: Record<string, { title: string; detail: string; capture: "user" | "environment" }> = {
   glasses: {
@@ -98,11 +120,20 @@ async function normalizePhoto(source: File) {
   }
 }
 
+function supportsFileShare() {
+  try {
+    const probe = new File([new Blob()], "probe.jpg", { type: "image/jpeg" });
+    return typeof navigator.share === "function" && Boolean(navigator.canShare?.({ files: [probe] }));
+  } catch {
+    return false;
+  }
+}
+
 export default function VirtualTryOn({ product }: { product: Product }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<TryOnStep>("source");
+  const [step, setStep] = useState<TryOnStep>("checking");
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoUrl, setPhotoUrl] = useState("");
   const [consented, setConsented] = useState(false);
@@ -112,6 +143,14 @@ export default function VirtualTryOn({ product }: { product: Product }) {
   const [error, setError] = useState("");
   const [sharing, setSharing] = useState(false);
   const [preparingPhoto, setPreparingPhoto] = useState(false);
+  const [status, setStatus] = useState<TryStatus | null>(null);
+  const [emailInput, setEmailInput] = useState("");
+  const [submittingEmail, setSubmittingEmail] = useState(false);
+  const [lineNotice, setLineNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [unavailableMessage, setUnavailableMessage] = useState("");
+  const [wantState, setWantState] = useState<"idle" | "sending" | "done">("idle");
+  const [shareUnsupported, setShareUnsupported] = useState(false);
+  const closeRef = useRef<() => void>(() => undefined);
 
   const guidance = guidanceByCategory[product.category] ?? fallbackGuidance;
   const colors = product.colors ?? [];
@@ -122,18 +161,65 @@ export default function VirtualTryOn({ product }: { product: Product }) {
   const resultImage = result ?? photoUrl;
 
   const stepNumber = useMemo(() => {
-    if (step === "source") return "01";
-    if (step === "confirm") return "02";
-    if (step === "generating") return "03";
-    return "04";
+    const numbers: Partial<Record<TryOnStep, string>> = {
+      email: "01", line: "02", source: "03", confirm: "04", generating: "05", result: "06",
+    };
+    return numbers[step] ?? "—";
   }, [step]);
+
+  const applyStatus = (next: TryStatus) => {
+    setStatus(next);
+    if (next.email) setEmailInput(next.email);
+    if (!next.registered) return setStep("email");
+    if (!next.friendVerified) return setStep("line");
+    if (next.triedThisGhost) {
+      setUnavailableMessage("このGHOSTは、1回だけ試せます。\nこのGHOSTはすでに試着済みです。");
+      return setStep("unavailable");
+    }
+    if (next.todayCount >= next.dailyLimit) {
+      setUnavailableMessage("1日に3つまでGHOSTを試せます。\nまた明日お試しください。");
+      return setStep("unavailable");
+    }
+    setStep("source");
+  };
+
+  const refreshStatus = async () => {
+    setStep("checking");
+    setError("");
+    try {
+      applyStatus(await fetchTryStatus(product.slug));
+    } catch (statusError) {
+      setUnavailableMessage(statusError instanceof TryOnError ? statusError.message : "TRY THE GHOSTの状態を確認できませんでした。");
+      setStep("unavailable");
+    }
+  };
+
+  const openTryOn = () => {
+    setOpen(true);
+    void refreshStatus();
+  };
+
+  // LINE Login から戻ってきたら、結果を表示してモーダルを開き直す
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const lineResult = url.searchParams.get("tryon");
+    if (!lineResult) return;
+    url.searchParams.delete("tryon");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    const timer = window.setTimeout(() => {
+      setLineNotice(lineResultMessages[lineResult] ?? null);
+      openTryOn();
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") closeRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -149,8 +235,9 @@ export default function VirtualTryOn({ product }: { product: Product }) {
   }, [photoUrl]);
 
   const reset = () => {
+    // 写真・生成画像はブラウザのメモリ上にだけあり、ここで破棄する
     if (result?.startsWith("blob:")) URL.revokeObjectURL(result);
-    setStep("source");
+    setStep("checking");
     setPhoto(null);
     setPhotoUrl("");
     setConsented(false);
@@ -159,13 +246,43 @@ export default function VirtualTryOn({ product }: { product: Product }) {
     setIsLayoutPreview(false);
     setError("");
     setPreparingPhoto(false);
+    setLineNotice(null);
+    setUnavailableMessage("");
+    setWantState("idle");
+    setShareUnsupported(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (cameraInputRef.current) cameraInputRef.current.value = "";
   };
 
   const close = () => {
+    if (
+      step === "result"
+      && !isLayoutPreview
+      && !window.confirm("生成画像はこの画面を閉じると再表示できません。閉じてもよろしいですか？")
+    ) return;
     setOpen(false);
     reset();
+  };
+  useEffect(() => {
+    closeRef.current = close;
+  });
+
+  const submitEmail = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmittingEmail(true);
+    setError("");
+    try {
+      await registerTryEmail(emailInput);
+      applyStatus(await fetchTryStatus(product.slug));
+    } catch (registerError) {
+      setError(registerError instanceof TryOnError ? registerError.message : "メールアドレスを登録できませんでした。");
+    } finally {
+      setSubmittingEmail(false);
+    }
+  };
+
+  const startLineLogin = (mock?: "friend" | "not_friend") => {
+    window.location.href = lineLoginUrl(window.location.pathname, mock);
   };
 
   const selectPhoto = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -207,9 +324,21 @@ export default function VirtualTryOn({ product }: { product: Product }) {
       setIsLayoutPreview(!generated);
       window.setTimeout(() => setStep("result"), generated ? 350 : 1100);
     } catch (generationError) {
-      setError(generationError instanceof TryOnError
+      const message = generationError instanceof TryOnError
         ? generationError.message
-        : "生成処理を完了できませんでした。時間を置いてもう一度お試しください。");
+        : "生成処理を完了できませんでした。時間を置いてもう一度お試しください。";
+      const code = generationError instanceof TryOnError ? generationError.code : "";
+      if (code === "TRY_GHOST_ALREADY_USED" || code === "TRY_DAILY_LIMIT") {
+        setUnavailableMessage(message);
+        setStep("unavailable");
+        return;
+      }
+      if (code === "TRY_EMAIL_REQUIRED" || code === "TRY_LINE_REQUIRED" || code === "TRY_LINE_NOT_FRIEND") {
+        setLineNotice({ tone: "error", text: message });
+        void refreshStatus();
+        return;
+      }
+      setError(message);
       setStep("confirm");
     }
   };
@@ -281,15 +410,11 @@ export default function VirtualTryOn({ product }: { product: Product }) {
     });
   };
 
-  const saveOrShare = async () => {
+  const saveImage = async () => {
     setSharing(true);
     try {
       const file = await makeShareFile();
       if (!file) return;
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: `${product.name} — ATELIER GHOST` });
-        return;
-      }
       const url = URL.createObjectURL(file);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -301,14 +426,37 @@ export default function VirtualTryOn({ product }: { product: Product }) {
     }
   };
 
-  const openInterest = () => {
-    close();
-    window.setTimeout(() => window.dispatchEvent(new Event("atelier:open-interest")), 80);
+  const shareImage = async () => {
+    setSharing(true);
+    try {
+      const file = await makeShareFile();
+      if (!file) return;
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `${product.name} — ATELIER GHOST` }).catch(() => undefined);
+      } else {
+        setShareUnsupported(true);
+      }
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  // TRY THE GHOST後の I WANT THIS は post_try として記録する（商品ページのI WANT THISとは別集計）
+  const wantAfterTry = async () => {
+    setWantState("sending");
+    setError("");
+    try {
+      await sendWant({ ghostId: product.slug, source: "post_try", colorName });
+      setWantState("done");
+    } catch (wantError) {
+      setWantState("idle");
+      setError(wantError instanceof TryOnError ? wantError.message : "登録できませんでした。");
+    }
   };
 
   return (
     <>
-      <button className="product-tryon-cta" type="button" onClick={() => setOpen(true)}>
+      <button className="product-tryon-cta" type="button" onClick={openTryOn}>
         <span>ONLINE TRY-ON</span>
         オンライン試着する
       </button>
@@ -317,11 +465,89 @@ export default function VirtualTryOn({ product }: { product: Product }) {
         <div className="tryon-modal" role="dialog" aria-modal="true" aria-labelledby="tryon-title">
           <header className="tryon-header">
             <img src="/images/atelier-ghost-logo-black-inline.png" alt="ATELIER GHOST" />
-            <p>ONLINE TRY-ON&nbsp;&nbsp; {stepNumber} / 04</p>
+            <p>ONLINE TRY-ON&nbsp;&nbsp; {stepNumber} / 06</p>
             <button type="button" aria-label="オンライン試着を閉じる" onClick={close}>×</button>
           </header>
 
           <div className={`tryon-body tryon-body--${step}`}>
+            {step === "checking" && (
+              <section className="tryon-gate" aria-live="polite">
+                <div className="tryon-orbit" aria-hidden="true"><i /><i /><i /></div>
+                <p className="tryon-kicker">CHECKING</p>
+              </section>
+            )}
+
+            {step === "email" && (
+              <section className="tryon-gate">
+                <p className="tryon-kicker">EMAIL</p>
+                <h2 id="tryon-title">TRY THE GHOST</h2>
+                <p>
+                  試着には、メールアドレスの登録と<br />
+                  ATELIER GHOST公式LINEの友だち追加が必要です。
+                </p>
+                {lineNotice && <p className={`tryon-notice tryon-notice--${lineNotice.tone}`} role="status">{lineNotice.text}</p>}
+                <form className="tryon-email-form" onSubmit={submitEmail}>
+                  <label htmlFor="tryon-email">EMAIL ADDRESS</label>
+                  <input
+                    id="tryon-email"
+                    type="email"
+                    autoComplete="email"
+                    value={emailInput}
+                    onChange={(event) => setEmailInput(event.target.value)}
+                    placeholder="you@example.com"
+                    required
+                  />
+                  {error && <p className="tryon-error" role="alert">{error}</p>}
+                  <button className="tryon-primary" type="submit" disabled={submittingEmail}>
+                    {submittingEmail ? "登録中…" : "次へ"}
+                  </button>
+                </form>
+                <ul className="tryon-rules">{TRY_RULES.map((rule) => <li key={rule}>{rule}</li>)}</ul>
+              </section>
+            )}
+
+            {step === "line" && (
+              <section className="tryon-gate">
+                <p className="tryon-kicker">LINE</p>
+                <h2 id="tryon-title">公式LINEを<br />友だち追加</h2>
+                <p>
+                  ATELIER GHOST公式LINEの友だち追加を確認できた方だけ、<br />
+                  写真をアップロードして試着できます。
+                </p>
+                {lineNotice && <p className={`tryon-notice tryon-notice--${lineNotice.tone}`} role="status">{lineNotice.text}</p>}
+                {status?.lineLoginReady === false ? (
+                  <p className="tryon-error" role="alert">LINE連携は現在準備中です。</p>
+                ) : (
+                  <button className="tryon-line-button" type="button" onClick={() => startLineLogin()}>
+                    {lineNotice?.tone === "error" && status?.lineLinked ? "もう一度確認する" : "LINEで友だち追加して続ける"}
+                  </button>
+                )}
+                {status?.lineLinked && (
+                  <a className="tryon-text-button" href={LINE_FRIEND_URL} target="_blank" rel="noreferrer">公式LINEを友だち追加する</a>
+                )}
+                {status?.lineMock && (
+                  <div className="tryon-mock-actions">
+                    <span>LOCAL MOCK</span>
+                    <button type="button" onClick={() => startLineLogin("friend")}>友だち</button>
+                    <button type="button" onClick={() => startLineLogin("not_friend")}>友だちではない</button>
+                  </div>
+                )}
+                <p className="tryon-registered-email">
+                  登録メール: {status?.email}
+                  <button type="button" onClick={() => { setLineNotice(null); setStep("email"); }}>変更する</button>
+                </p>
+              </section>
+            )}
+
+            {step === "unavailable" && (
+              <section className="tryon-gate">
+                <p className="tryon-kicker">TRY THE GHOST</p>
+                <h2 id="tryon-title">{product.name}</h2>
+                <p className="tryon-notice">{unavailableMessage}</p>
+                <button className="tryon-secondary" type="button" onClick={close}>閉じる</button>
+              </section>
+            )}
+
             {step === "source" && (
               <section className="tryon-source">
                 <h2 id="tryon-title">自分の写真で<br />{product.name}<br />を試着する</h2>
@@ -329,7 +555,9 @@ export default function VirtualTryOn({ product }: { product: Product }) {
                   <button type="button" disabled={preparingPhoto} onClick={() => fileInputRef.current?.click()}>{preparingPhoto ? "写真を準備中…" : "写真を選ぶ"} <span>→</span></button>
                   <button type="button" disabled={preparingPhoto} onClick={() => cameraInputRef.current?.click()}>今撮影する <span>→</span></button>
                 </div>
+                {lineNotice?.tone === "ok" && <p className="tryon-notice tryon-notice--ok" role="status">{lineNotice.text}</p>}
                 {error && <p className="tryon-error" role="alert">{error}</p>}
+                <ul className="tryon-rules">{TRY_RULES.map((rule) => <li key={rule}>{rule}</li>)}</ul>
                 <div className="tryon-guidance">
                   <p>{guidance.title}</p>
                   <span>{guidance.detail}</span>
@@ -408,12 +636,29 @@ export default function VirtualTryOn({ product }: { product: Product }) {
                     <p>ストーリーズでシェアしよう</p>
                     <span>完成したビジュアルを保存して、Instagramストーリーズへ。</span>
                   </div>
+                  <p className="tryon-discard-note">
+                    生成画像はこの画面を閉じると再表示できません。<br />
+                    保存したい場合は、ご自身の端末に保存してください。
+                  </p>
                   <div className="tryon-result-actions">
-                    <button className="tryon-primary" type="button" disabled={sharing || isLayoutPreview} onClick={saveOrShare}>
-                      {isLayoutPreview ? "AI接続後に保存できます" : sharing ? "準備中…" : "画像を保存・シェアする"}
+                    <button
+                      className="tryon-primary"
+                      type="button"
+                      disabled={isLayoutPreview || wantState !== "idle"}
+                      onClick={wantAfterTry}
+                    >
+                      {wantState === "done" ? "REQUEST RECEIVED" : wantState === "sending" ? "送信中…" : "I WANT THIS"}
                     </button>
-                    <button className="tryon-secondary" type="button" onClick={openInterest}>I WANT THIS</button>
-                    <button className="tryon-text-button" type="button" onClick={reset}>別の写真で試す</button>
+                    <button className="tryon-secondary" type="button" disabled={sharing || isLayoutPreview} onClick={saveImage}>
+                      {isLayoutPreview ? "AI接続後に保存できます" : sharing ? "準備中…" : "SAVE IMAGE"}
+                    </button>
+                    {supportsFileShare() && !shareUnsupported ? (
+                      <button className="tryon-secondary" type="button" disabled={sharing || isLayoutPreview} onClick={shareImage}>SHARE</button>
+                    ) : (
+                      <p className="tryon-share-fallback">このブラウザは画像の共有に対応していません。SAVE IMAGEで端末に保存してから共有してください。</p>
+                    )}
+                    {wantState === "done" && <p className="tryon-notice tryon-notice--ok" role="status">このGHOSTへの意思表示を受け取りました。</p>}
+                    {error && <p className="tryon-error" role="alert">{error}</p>}
                   </div>
                 </div>
               </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Product } from "./products";
 
@@ -8,16 +8,31 @@ type MobileFlow = "idle" | "statement" | "statement-exit" | "guide" | "guide-exi
 type GuideStep = 1 | 2;
 let hasCompletedIntroThisLoad = false;
 
-const statement = [
+// 配列にした行は、スマホ幅でだけ区切り位置で改行する（同じ段落のまま）
+const statement: (string | string[])[] = [
   "まだ存在しないけれど、存在してほしいと願うもの。",
   "どう作るかより先に、何が欲しいかを考える。",
-  "素材も、構造も、つくり方も、最初から現実に合わせなくていい。",
-  "ATELIER GHOSTは、そんな「存在してほしいもの」をデザインする。",
+  ["素材も、構造も、つくり方も、", "最初から現実に合わせなくていい。"],
+  ["ATELIER GHOSTは、", "そんな「存在してほしいもの」をデザインする。"],
   "まだ形を持たないそれらを、私たちは GHOST と呼ぶ。",
-  "誰かが欲しいと思う。誰かが心を動かされる。誰かが存在を願う。",
+  ["誰かが欲しいと思う。", "誰かが心を動かされる。", "誰かが存在を願う。"],
   "その願いが重なったとき、GHOSTは現実になるかもしれない。",
   "まだ存在しないものを、存在してほしいと願うところから。",
 ];
+
+function StatementLine({ line, index }: { line: string | string[]; index: number }) {
+  const segments = Array.isArray(line) ? line : [line];
+  return (
+    <p style={{ "--line": index } as React.CSSProperties}>
+      {segments.map((segment, segmentIndex) => (
+        <Fragment key={segment}>
+          {segmentIndex > 0 && <br className="statement-sp-break" />}
+          {segment}
+        </Fragment>
+      ))}
+    </p>
+  );
+}
 
 const productIntro = [
   ["ATELIER GHOSTは、", "まだ存在していない未来のアイテムを", "取り扱うブランドです。"],
@@ -388,7 +403,7 @@ export default function HomeClient({ products }: { products: Product[] }) {
         <div className="statement-copy">
           <Logo />
           <div className="statement-lines">
-            {statement.map((line, index) => <p key={line} style={{ "--line": index } as React.CSSProperties}>{line}</p>)}
+            {statement.map((line, index) => <StatementLine key={index} line={line} index={index} />)}
           </div>
         </div>
         <button className="continue-cue" type="button" onClick={openDesktopGuide}><span>DISCOVER THE GHOSTS</span><i aria-hidden="true" /></button>
@@ -446,7 +461,7 @@ export default function HomeClient({ products }: { products: Product[] }) {
           <div className="statement-copy">
             <Logo />
             <div className="statement-lines">
-              {statement.map((line, index) => <p key={line} style={{ "--line": index } as React.CSSProperties}>{line}</p>)}
+              {statement.map((line, index) => <StatementLine key={index} line={line} index={index} />)}
             </div>
           </div>
           <button className="continue-cue" type="button" onClick={finishMobileStatement}><span>DISCOVER THE GHOSTS</span><i aria-hidden="true" /></button>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getProductBySlug, getProductSlugs } from "../../products";
+import { getProductBySlug, getProductSlugs, isPurchasable } from "../../products";
+import ProductAssurance from "./ProductAssurance";
 import ProductGallery from "./ProductGallery";
 import ProductInterest from "./ProductInterest";
 import VirtualTryOn from "./VirtualTryOn";
@@ -36,8 +37,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           )}
           <div className="product-page-actions">
             <VirtualTryOn product={product} />
-            <ProductInterest productName={product.name} />
+            <ProductInterest productName={product.name} productSlug={product.slug} />
           </div>
+          {isPurchasable(product) && <ProductAssurance product={product} />}
         </div>
       </div>
     </main>

@@ -18,7 +18,25 @@ export type Product = {
   modelImages?: string[];
   tryOnTemplate?: string;
   colors?: ColorOption[];
+  /** "available" のときだけ、返品無料※・配送予定などの購入時の安心情報を表示する。未指定は未発売のGHOST。 */
+  availability?: "ghost" | "available";
+  purchaseInfo?: PurchaseInfo;
 };
+
+export type PurchaseInfo = {
+  /** 配送予定（例: ご注文から3〜5営業日で発送） */
+  shipping?: string;
+  /** 支払い方法（例: クレジットカード / Apple Pay） */
+  payment?: string;
+  /** サイズ情報。未指定なら specs の「サイズ」を表示する */
+  size?: string;
+  /** この商品だけの返品対象外条件 */
+  returnExclusions?: string[];
+};
+
+export function isPurchasable(product: Product) {
+  return product.availability === "available";
+}
 
 export const fallbackProducts: Product[] = [
   {
@@ -148,6 +166,11 @@ type MicroCMSProduct = {
   images?: MicroCMSImage | MicroCMSImage[];
   modelImages?: MicroCMSImage | MicroCMSImage[];
   colors?: MicroCMSColor[];
+  availability?: string | string[];
+  shipping?: string;
+  payment?: string;
+  sizeInfo?: string;
+  returnExclusions?: string;
 };
 
 type MicroCMSListResponse = {
@@ -195,6 +218,13 @@ function normalizeProduct(item: MicroCMSProduct): Product | null {
       .filter((spec) => spec.label && spec.value)
       .map((spec) => ({ label: spec.label!, value: spec.value! })),
     ...(colors.length > 0 ? { colors } : { images }),
+    availability: [item.availability].flat().includes("available") ? "available" : "ghost",
+    purchaseInfo: {
+      shipping: item.shipping || undefined,
+      payment: item.payment || undefined,
+      size: item.sizeInfo || undefined,
+      returnExclusions: (item.returnExclusions ?? "").split("\n").map((line) => line.trim()).filter(Boolean),
+    },
   };
 }
 

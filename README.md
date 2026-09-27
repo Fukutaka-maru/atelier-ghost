@@ -6,6 +6,8 @@
 
 - 商品CMSのセットアップ: [MICROCMS_SETUP.md](./MICROCMS_SETUP.md)
 - AIオンライン試着の設定: [AI_TRY_ON_SETUP.md](./AI_TRY_ON_SETUP.md)
+- TRY THE GHOST（メール・LINE友だち必須、回数制限、D1）: [TRY_THE_GHOST_SETUP.md](./TRY_THE_GHOST_SETUP.md)
+- デプロイ: `npm run deploy`
 
 ---
 
